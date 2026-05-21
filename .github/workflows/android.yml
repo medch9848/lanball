@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     env:
       GODOT_VERSION: 4.2.2
@@ -32,10 +32,16 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android packages
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+          sdkmanager \
+            "platform-tools" \
+            "build-tools;34.0.0" \
+            "platforms;android-34" \
+            "cmdline-tools;latest" \
+            "cmake;3.10.2.4988404" \
+            "ndk;23.2.8568313"
 
       - name: Download Godot
         run: |
@@ -67,9 +73,14 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US" \
             -noprompt
 
+          keytool -list \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey
+
       - name: Create clean project.godot
         run: |
-          cat > project.godot <<EOF
+          cat > project.godot <<'EOF'
           config_version=5
 
           [application]
@@ -93,7 +104,7 @@ jobs:
 
       - name: Create Android export preset
         run: |
-          cat > export_presets.cfg <<EOF
+          cat > export_presets.cfg <<'EOF'
           [preset.0]
 
           name="Android"
@@ -116,8 +127,10 @@ jobs:
           custom_template/debug=""
           custom_template/release=""
 
-          gradle_build/use_gradle_build=false
+          gradle_build/use_gradle_build=true
           gradle_build/export_format=0
+          gradle_build/min_sdk=24
+          gradle_build/target_sdk=34
 
           architectures/armeabi-v7a=false
           architectures/arm64-v8a=true
@@ -140,11 +153,12 @@ jobs:
           keystore/debug="/home/runner/.android/debug.keystore"
           keystore/debug_user="androiddebugkey"
           keystore/debug_password="android"
+
           keystore/release="/home/runner/.android/debug.keystore"
           keystore/release_user="androiddebugkey"
           keystore/release_password="android"
 
-          one_click_deploy/clear_previous_install=true
+          one_click_deploy/clear_previous_install=false
 
           graphics/opengl_debug=false
           xr_features/xr_mode=0
@@ -170,12 +184,12 @@ jobs:
       - name: Configure Godot editor settings
         run: |
           mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<'EOF'
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
+          export/android/java_sdk_path = "/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.*/x64"
           export/android/debug_keystore = "/home/runner/.android/debug.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
@@ -184,6 +198,10 @@ jobs:
       - name: Import project
         run: |
           ./godot --headless --path . --editor --quit || true
+
+      - name: Install Android build template
+        run: |
+          ./godot --headless --path . --install-android-build-template
 
       - name: Build APK
         env:
